@@ -271,7 +271,8 @@
             </div>
             <div class="header-btn">
                 <a href="upload.jsp" class="btn-signin">Upload</a>
-                <a href="#" class="btn-signin">DELETE</a>
+                <a href="delete.jsp" class="btn-signin">DELETE</a>
+                <a href="renameFile.jsp" class="btn-signin">Rename</a>
             </div>
         </div>
     </header>

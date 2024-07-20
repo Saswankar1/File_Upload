@@ -29,11 +29,10 @@ public class FileUploadServlet extends HttpServlet {
     private static String UPLOAD_DIR;
     private static String SAP_UPLOAD_DIR;
     private static String POLICIES_UPLOAD_DIR;
-    
+
     private static final int MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB in bytes
     private static final Logger LOGGER = Logger.getLogger(FileUploadServlet.class.getName());
 
-    // Load database connection parameters from properties file
     private Properties loadProperties() throws IOException {
         Properties properties = new Properties();
         String propertiesFilePath = getServletContext().getRealPath("/WEB-INF/config.properties");
@@ -56,26 +55,71 @@ public class FileUploadServlet extends HttpServlet {
     }
 
     protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-        // Get additional form fields
         String fileType = request.getParameter("fileType");
         String category = request.getParameter("category");
+        String sapType = request.getParameter("sapType");
+        String link = request.getParameter("link");
 
-        // Determine the upload directory based on the selected category
         String uploadFilePath;
-        if ("sap".equals(category)) {
+        if ("SAP User Manual".equals(category)) {
             uploadFilePath = SAP_UPLOAD_DIR;
-        } else if ("policies".equals(category)) {
+        } else if ("AGCL common policies".equals(category)) {
             uploadFilePath = POLICIES_UPLOAD_DIR;
         } else {
             uploadFilePath = UPLOAD_DIR;
         }
 
-        // Create the upload directory if it does not exist
-        File uploadDir = new File(uploadFilePath);
-        if (!uploadDir.exists()) {
-            uploadDir.mkdirs();
+        if ("link".equals(sapType)) {
+            // Handle link input
+            handleLinkInput(request, response, link, fileType, category);
+        } else {
+            // Handle file upload
+            handleFileUpload(request, response, uploadFilePath, fileType, category);
+        }
+    }
+
+    private void handleLinkInput(HttpServletRequest request, HttpServletResponse response, String link, String fileType, String category) throws IOException {
+        // Insert link details into the database
+        try {
+            Properties properties = loadProperties();
+            String dbUrl = properties.getProperty("db.url");
+            String dbUser = properties.getProperty("db.user");
+            String dbPassword = properties.getProperty("db.password");
+            String insertStatement = properties.getProperty("db.insert");
+
+            Class.forName("org.postgresql.Driver");
+            try (Connection con = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+                PreparedStatement ps = con.prepareStatement(insertStatement);
+                ps.setString(1, link); // Store the link in place of the file name
+                ps.setString(2, fileType);
+                ps.setInt(3, (int) request.getSession().getAttribute("userId")); // Retrieve userId from session
+                ps.setLong(4, 0); // Set file size to 0 for links
+                ps.setString(5, category); // Add category to the prepared statement
+
+                LOGGER.log(Level.INFO, "Executing SQL: {0}", ps.toString());
+                int rowsInserted = ps.executeUpdate();
+                if (rowsInserted > 0) {
+                    LOGGER.log(Level.INFO, "Link details inserted successfully.");
+                } else {
+                    LOGGER.log(Level.SEVERE, "Failed to insert link details.");
+                    response.sendRedirect("error2.jsp");
+                    return;
+                }
+            } catch (SQLException e) {
+                LOGGER.log(Level.SEVERE, "SQL Exception: ", e);
+                response.sendRedirect("error2.jsp");
+                return;
+            }
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Exception: ", e);
+            response.sendRedirect("error2.jsp");
+            return;
         }
 
+        response.sendRedirect("home.jsp?status=success");
+    }
+
+    private void handleFileUpload(HttpServletRequest request, HttpServletResponse response, String uploadFilePath, String fileType, String category) throws IOException, ServletException {
         // Get the file part from the request
         Part filePart = request.getPart("file");
 
@@ -114,45 +158,43 @@ public class FileUploadServlet extends HttpServlet {
             Files.copy(fileContent, file.toPath());
         }
 
-        // Insert file details into the database only if the file is new
-        if (!file.exists()) {
-            try {
-                Properties properties = loadProperties();
-                String dbUrl = properties.getProperty("db.url");
-                String dbUser = properties.getProperty("db.user");
-                String dbPassword = properties.getProperty("db.password");
-                String insertStatement = properties.getProperty("db.insert");
+        // Insert file details into the database
+        try {
+            Properties properties = loadProperties();
+            String dbUrl = properties.getProperty("db.url");
+            String dbUser = properties.getProperty("db.user");
+            String dbPassword = properties.getProperty("db.password");
+            String insertStatement = properties.getProperty("db.insert");
 
-                Class.forName("org.postgresql.Driver");
-                try (Connection con = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
-                    PreparedStatement ps = con.prepareStatement(insertStatement);
-                    ps.setString(1, fileName);
-                    ps.setString(2, fileType);
-                    ps.setInt(3, (int) request.getSession().getAttribute("userId")); // Retrieve userId from session
-                    ps.setLong(4, fileSize);
+            Class.forName("org.postgresql.Driver");
+            try (Connection con = DriverManager.getConnection(dbUrl, dbUser, dbPassword)) {
+                PreparedStatement ps = con.prepareStatement(insertStatement);
+                ps.setString(1, fileName);
+                ps.setString(2, fileType);
+                ps.setInt(3, (int) request.getSession().getAttribute("userId")); // Retrieve userId from session
+                ps.setLong(4, fileSize);
+                ps.setString(5, category); // Add category to the prepared statement
 
-                    LOGGER.log(Level.INFO, "Executing SQL: {0}", ps.toString());
-                    int rowsInserted = ps.executeUpdate();
-                    if (rowsInserted > 0) {
-                        LOGGER.log(Level.INFO, "File details inserted successfully.");
-                    } else {
-                        LOGGER.log(Level.SEVERE, "Failed to insert file details.");
-                        response.sendRedirect("error2.jsp");
-                        return;
-                    }
-                } catch (SQLException e) {
-                    LOGGER.log(Level.SEVERE, "SQL Exception: ", e);
+                LOGGER.log(Level.INFO, "Executing SQL: {0}", ps.toString());
+                int rowsInserted = ps.executeUpdate();
+                if (rowsInserted > 0) {
+                    LOGGER.log(Level.INFO, "File details inserted successfully.");
+                } else {
+                    LOGGER.log(Level.SEVERE, "Failed to insert file details.");
                     response.sendRedirect("error2.jsp");
                     return;
                 }
-            } catch (Exception e) {
-                LOGGER.log(Level.SEVERE, "Exception: ", e);
+            } catch (SQLException e) {
+                LOGGER.log(Level.SEVERE, "SQL Exception: ", e);
                 response.sendRedirect("error2.jsp");
                 return;
             }
+        } catch (Exception e) {
+            LOGGER.log(Level.SEVERE, "Exception: ", e);
+            response.sendRedirect("error2.jsp");
+            return;
         }
 
-        // Redirect to home.jsp with success parameter
         response.sendRedirect("home.jsp?status=success");
     }
 

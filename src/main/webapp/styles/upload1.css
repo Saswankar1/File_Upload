@@ -52,7 +52,7 @@ label {
 input[type="text"],
 input[type="email"],
 select,
-textarea {
+textarea, input {
   width: calc(100% - 22px);
   padding: 10px;
   margin-bottom: 30px;
